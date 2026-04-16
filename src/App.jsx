@@ -61,7 +61,12 @@ export default function App() {
   const [data, setData] = useState(DATA_BASE);
   const [tab, setTab] = useState("Resumen");
   const [catAbierta, setCatAbierta] = useState(null);
-  const [nuevoGasto, setNuevoGasto] = useState({ nombre: "", monto: "" });
+ const [nuevoGasto, setNuevoGasto] = useState({
+  catId: null,
+  nombre: "",
+  monto: "",
+});
+  const [editandoGasto, setEditandoGasto] = useState(null);
   const [nuevaCat, setNuevaCat] = useState("");
   const [nuevoProp, setNuevoProp] = useState("");
   const [nuevoBanco, setNuevoBanco] = useState("");
@@ -93,7 +98,20 @@ export default function App() {
     saveStorage({ historial: nuevoHistorial, mesActual, data });
   }, [data]);
 
-  const mesesEnHistorial = Object.keys(historial).sort().reverse();
+ const mesesEnHistorial = Object.keys(historial).sort((a, b) => {
+  const [ya, ma, qa] = a.split("-");
+  const [yb, mb, qb] = b.split("-");
+
+  const dateA = new Date(ya, ma - 1);
+  const dateB = new Date(yb, mb - 1);
+
+  if (dateA.getTime() !== dateB.getTime()) {
+    return dateB - dateA;
+  }
+
+  return qa.localeCompare(qb); // Q1 antes Q2
+});
+
   const mesReciente = mesesEnHistorial[0] || mesActual;
 
   const cambiarMes = (mes) => {
@@ -162,6 +180,24 @@ export default function App() {
   const libre = data.sueldo - totalGastos - totalAhorros;
   const pctGastos = Math.min((totalGastos / (data.sueldo || 1)) * 100, 100);
   const pctAhorros = Math.min((totalAhorros / (data.sueldo || 1)) * 100, 100);
+
+  const actualizarGasto = (catId, gastoId, campo, valor) => {
+  setData((d) => ({
+    ...d,
+    categorias: d.categorias.map((c) =>
+      c.id === catId
+        ? {
+            ...c,
+            gastos: c.gastos.map((g) =>
+              g.id === gastoId
+                ? { ...g, [campo]: valor }
+                : g
+            ),
+          }
+        : c
+    ),
+  }));
+};
 
   const agregarGasto = (catId) => {
     if (!nuevoGasto.nombre || !nuevoGasto.monto) return;
