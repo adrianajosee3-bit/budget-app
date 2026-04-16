@@ -108,12 +108,21 @@ export default function App() {
     setCatAbierta(null);
   };
 
+  // FIX 1: lógica correcta de quincenas (Q1 → Q2 mismo mes, Q2 → Q1 mes siguiente)
   const nuevoMes = () => {
-    const now = new Date();
     const partes = mesActual.split("-");
-    const base = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, 1);
-    base.setMonth(base.getMonth() + 1);
-    const sig = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}`;
+    const year = parseInt(partes[0]);
+    const month = parseInt(partes[1]) - 1;
+    const q = partes[2];
+
+    let sigKey;
+    if (q === "Q1") {
+      sigKey = `${year}-${String(month + 1).padStart(2, "0")}-Q2`;
+    } else {
+      const sigDate = new Date(year, month + 1, 1);
+      sigKey = `${sigDate.getFullYear()}-${String(sigDate.getMonth() + 1).padStart(2, "0")}-Q1`;
+    }
+
     const dataNueva = {
       ...data,
       categorias: data.categorias.map((c) => ({
@@ -125,13 +134,23 @@ export default function App() {
         propositos: data.ahorros.propositos.map((p) => ({ ...p, monto: p.fijo ? p.monto : 0 })),
       },
     };
-    const nuevoHistorial = { ...historial, [mesActual]: data, [sig]: dataNueva };
+
+    const nuevoHistorial = { ...historial, [mesActual]: data, [sigKey]: dataNueva };
     setHistorial(nuevoHistorial);
-    setMesActual(sig);
+    setMesActual(sigKey);
     setData(dataNueva);
-    saveStorage({ historial: nuevoHistorial, mesActual: sig, data: dataNueva });
+    saveStorage({ historial: nuevoHistorial, mesActual: sigKey, data: dataNueva });
     setModal(null);
     setTab("Resumen");
+  };
+
+  // FIX 2: eliminar quincena del historial
+  const eliminarQuincena = (mes) => {
+    const nuevoHistorial = { ...historial };
+    delete nuevoHistorial[mes];
+    setHistorial(nuevoHistorial);
+    saveStorage({ historial: nuevoHistorial, mesActual, data });
+    setModal(null);
   };
 
   const esReadOnly = mesActual !== mesReciente;
@@ -181,19 +200,33 @@ export default function App() {
               const tg = d ? d.categorias.reduce((s, c) => s + c.gastos.reduce((ss, g) => ss + parseFloat(g.monto || 0), 0), 0) : 0;
               const esActivo = i === 0;
               return (
-                <button key={mes} onClick={() => cambiarMes(mes)} style={{
-                  width: "100%", textAlign: "left",
-                  background: mesActual === mes ? "#1a1a1a" : "transparent",
-                  border: mesActual === mes ? `1px solid ${esActivo ? "#c8f060" : "#60c8f0"}` : "1px solid #1f1f1f",
-                  borderRadius: 10, padding: "14px", color: "#f0ebe0",
-                  cursor: "pointer", fontFamily: "inherit", marginBottom: 8,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{labelQuincena(mes)}</span>
-                    {esActivo && <span style={{ fontSize: 9, color: "#c8f060", letterSpacing: 1 }}>ACTUAL</span>}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#555", marginTop: 4 }}>gastos {fmt(tg)} · sueldo {fmt(d?.sueldo || 0)}</div>
-                </button>
+                // FIX 2: botón × por quincena para eliminarla (excepto la activa)
+                <div key={mes} style={{ position: "relative", marginBottom: 8 }}>
+                  <button onClick={() => cambiarMes(mes)} style={{
+                    width: "100%", textAlign: "left",
+                    background: mesActual === mes ? "#1a1a1a" : "transparent",
+                    border: mesActual === mes ? `1px solid ${esActivo ? "#c8f060" : "#60c8f0"}` : "1px solid #1f1f1f",
+                    borderRadius: 10, padding: "14px", color: "#f0ebe0",
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingRight: esActivo ? 0 : 20 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{labelQuincena(mes)}</span>
+                      {esActivo && <span style={{ fontSize: 9, color: "#c8f060", letterSpacing: 1 }}>ACTUAL</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#555", marginTop: 4 }}>gastos {fmt(tg)} · sueldo {fmt(d?.sueldo || 0)}</div>
+                  </button>
+                  {!esActivo && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModal({ tipo: "eliminarQuincena", mes, label: labelQuincena(mes) });
+                        setMenuAbierto(false);
+                      }}
+                      style={{ position: "absolute", top: 10, right: 10, background: "none", border: "none", color: "#444", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 4px" }}>
+                      ×
+                    </button>
+                  )}
+                </div>
               );
             })}
 
@@ -454,6 +487,7 @@ export default function App() {
       {modal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }}>
           <div style={{ background: "#131313", borderRadius: "20px 20px 0 0", padding: 28, width: "100%", maxWidth: 480, border: "1px solid #1f1f1f" }}>
+
             {modal.tipo === "nuevoMes" && (
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Iniciar nueva quincena</div>
@@ -466,6 +500,21 @@ export default function App() {
                 </div>
               </>
             )}
+
+            {/* FIX 2: modal para confirmar eliminación de quincena */}
+            {modal.tipo === "eliminarQuincena" && (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>¿Eliminar "{modal.label}"?</div>
+                <div style={{ fontSize: 12, color: "#666", marginBottom: 24, lineHeight: 1.7 }}>
+                  Se borrará del historial permanentemente. Esta acción no se puede deshacer.
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setModal(null)} style={{ ...btnSecondary, flex: 1 }}>Cancelar</button>
+                  <button onClick={() => eliminarQuincena(modal.mes)} style={{ ...btnDanger, flex: 1 }}>Eliminar</button>
+                </div>
+              </>
+            )}
+
             {["eliminarCat","eliminarProp","eliminarBanco","eliminarGasto"].includes(modal.tipo) && (
               <>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>¿Eliminar "{modal.nombre}"?</div>
@@ -481,6 +530,7 @@ export default function App() {
                 </div>
               </>
             )}
+
           </div>
         </div>
       )}
