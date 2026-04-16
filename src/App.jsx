@@ -92,13 +92,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!mounted.current) return;
-    const nuevoHistorial = { ...historial, [mesActual]: data };
-    setHistorial(nuevoHistorial);
-    saveStorage({ historial: nuevoHistorial, mesActual, data });
-  }, [data]);
+  if (!mounted.current) return;
 
- const mesesEnHistorial = Object.keys(historial).sort((a, b) => {
+  const nuevoHistorial = {
+    ...historial,
+    [mesActual]: {
+      ...data,
+      locked: historial[mesActual]?.locked ?? false
+    }
+  };
+
+  setHistorial(nuevoHistorial);
+  saveStorage({
+    historial: nuevoHistorial,
+    mesActual,
+    data
+  });
+}, [data]);
+
+const mesesEnHistorial = Object.keys(historial).sort((a, b) => {
   const [ya, ma, qa] = a.split("-");
   const [yb, mb, qb] = b.split("-");
 
@@ -109,7 +121,8 @@ export default function App() {
     return dateB - dateA;
   }
 
-  return qa.localeCompare(qb); // Q1 antes Q2
+  const ordenQ = { Q1: 1, Q2: 2 };
+  return ordenQ[qb] - ordenQ[qa];
 });
 
   const mesReciente = mesesEnHistorial[0] || mesActual;
@@ -153,7 +166,11 @@ export default function App() {
       },
     };
 
-    const nuevoHistorial = { ...historial, [mesActual]: data, [sigKey]: dataNueva };
+    const nuevoHistorial = {
+  ...historial,
+  [mesActual]: { ...data, locked: true },
+  [sigKey]: { ...dataNueva, locked: false }
+};
     setHistorial(nuevoHistorial);
     setMesActual(sigKey);
     setData(dataNueva);
@@ -171,7 +188,7 @@ export default function App() {
     setModal(null);
   };
 
-  const esReadOnly = mesActual !== mesReciente;
+  const esReadOnly = false;
 
   const totalGastos = data.categorias.reduce((sum, cat) => sum + cat.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0), 0);
   const totalPagado = data.categorias.reduce((sum, cat) => sum + cat.gastos.filter(g => g.pagado).reduce((s, g) => s + parseFloat(g.monto || 0), 0), 0);
